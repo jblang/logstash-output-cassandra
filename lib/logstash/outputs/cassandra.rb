@@ -2,17 +2,52 @@
 require "logstash/outputs/base"
 require "logstash/namespace"
 
-# Output plugin for Apache Cassandra (http://cassandra.apache.org/)
-# Uses the DataStax Ruby Driver (https://github.com/datastax/ruby-driver)
+# Output plugin for http://cassandra.apache.org/[Apache Cassandra]
+# using the https://github.com/datastax/ruby-driver[DataStax Ruby Driver].
+#
 class LogStash::Outputs::Cassandra < LogStash::Outputs::Base
   config_name "cassandra"
 
-  # A hash of options for establishing cluster connection via DataStax Ruby Driver
-  # See: http://datastax.github.io/ruby-driver/api/#cluster-class_method
+  # A hash of options for establishing cluster connection. See the
+  # http://datastax.github.io/ruby-driver/api/#cluster-class_method[driver API documentation]
+  # for a list of supported options.
   config :options, :validate => :hash, :default => {}
 
-  # Strings specifying keyspace and table name to use for events
+  # The keyspace to use; if it doesn't exist, it will be automatically created 
+  # using SimpleStrategy with a replication factor of 1.
   config :keyspace, :validate => :string, :default => "logstash"
+
+  # The table to use; if it doesn't exist, it will be automatically created using
+  # the following schema:
+  # ----
+  # create table if not exists logstash (
+  # id uuid primary key,
+  # version text,
+  # \"timestamp\" timestamp,
+  # tags set<text>,
+  # type text,
+  # message text,
+  # path text,
+  # host text,
+  # b_ map<text, boolean>,
+  # d_ map<text, timestamp>,
+  # f_ map<text, float>,
+  # i_ map<text, bigint>,
+  # s_ map<text, text>);
+  # ----
+  # Any fields in the event that don't exist in the schema will be placed into 
+  # the map of the appropriate type. The naming convention of the maps matches the way
+  # http://docs.datastax.com/en/datastax_enterprise/4.7/datastax_enterprise/srch/srchDynFlds.html[Solr dynamic fields]
+  # work in http://www.datastax.com/products/products-index[DataStax Enterprise], so
+  # that with DSE, you can create a Solr schema on top of this table and then use
+  # https://github.com/LucidWorks/banana/[Banana] to analyze logs stored in Cassandra.
+  # Individual values stored in a map are limited to 64K. If you need to store larger
+  # values, add a custom field (see below).
+  #
+  # It is also possible to customize the table by adding additional fields. Any
+  # additional fields that match the name of those in your event will automatically
+  # be used. When adding fields, make sure that their type matches the type used in
+  # your event object, or the insert will fail.
   config :table, :validate => :string, :default => "logstash"
 
   public
