@@ -2,7 +2,8 @@
 require "logstash/outputs/base"
 require "logstash/namespace"
 
-# An example output that does nothing.
+# Output plugin for Apache Cassandra (http://cassandra.apache.org/)
+# Uses the DataStax Ruby Driver (https://github.com/datastax/ruby-driver)
 class LogStash::Outputs::Cassandra < LogStash::Outputs::Base
   config_name "cassandra"
 
