@@ -19,8 +19,8 @@ class LogStash::Outputs::Cassandra < LogStash::Outputs::Base
       require 'cassandra'
       require 'time'
       cluster = Cassandra.cluster(@options)
-      @columns = cluster.keyspace(@keyspace).table(@table).columns
-      cql = "insert into #{@table} (#{@columns.map {|col| col.name}.join(",")}) values (#{@columns.map {|col| ":" + col.name}.join(",")})"
+      @columns = cluster.keyspace(@keyspace).table(@table).columns.map {|col| col.name}
+      cql = "insert into #{@table} (#{@columns.join(",")}) values (#{@columns.map {|col| ":" + col}.join(",")})"
       @session = cluster.connect(@keyspace)
       @statement = @session.prepare(cql)
       @generator = Cassandra::Uuid::Generator.new
@@ -29,10 +29,43 @@ class LogStash::Outputs::Cassandra < LogStash::Outputs::Base
   public
   def receive(event)
       return unless output?(event)
+      generic = {'b_' => {}, 'd_' => {}, 'i_' => {}, 'f_' => {}, 's_' => {}}
       args = event.to_hash
       args["id"] = @generator.uuid
       args["version"] = args.delete("@version").to_i
       args["timestamp"] = Time.iso8601(args.delete("@timestamp").iso8601)
+      args.each do |key, value|
+          if not @columns.include?(key)
+              if value.is_a?(TrueClass) or value.is_a?(FalseClass)
+                  prefix = 'b_'
+              elsif value.is_a?(Time)
+                  prefix = 'd_'
+              elsif value.is_a?(Fixnum)
+                  prefix = 'i_'
+              elsif value.is_a?(Float)
+                  prefix = 'f_'
+              elsif value.is_a?(String)
+                  prefix = 's_'
+              else
+                  prefix = 's_'
+                  value = JSON.generate(value)
+              end
+              if not value.nil?
+                  generic[prefix][prefix + key] = value
+              end
+              args.delete(key)
+          end
+      end
+      generic.each do |key, value|
+          if @columns.include?(key)
+              args[key] = value
+          end
+      end
+      @columns.each do |key, value|
+          if not args.has_key?(key)
+              args[key] = nil
+          end
+      end
       @session.execute(@statement, arguments: args)
   end # def event
 end # class LogStash::Outputs::Cassandra
