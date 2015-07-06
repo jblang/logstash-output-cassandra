@@ -19,9 +19,26 @@ class LogStash::Outputs::Cassandra < LogStash::Outputs::Base
       require 'cassandra'
       require 'time'
       cluster = Cassandra.cluster(@options)
+      @session = cluster.connect
+      @session.execute("create keyspace if not exists #{@keyspace} with replication = {'class': 'SimpleStrategy', 'replication_factor': '1'};")
+      @session.execute("use #{@keyspace};")
+      @session.execute("create table if not exists #{@table} (
+                        id uuid primary key,
+                        version text,
+                        \"timestamp\" timestamp,
+                        tags set<text>,
+                        type text,
+                        message text,
+                        path text,
+                        host text,
+                        b_ map<text, boolean>,
+                        d_ map<text, timestamp>,
+                        f_ map<text, float>,
+                        i_ map<text, bigint>,
+                        s_ map<text, text>);")
+      cluster.refresh_schema
       @columns = cluster.keyspace(@keyspace).table(@table).columns.map {|col| col.name}
       cql = "insert into #{@table} (#{@columns.join(",")}) values (#{@columns.map {|col| ":" + col}.join(",")})"
-      @session = cluster.connect(@keyspace)
       @statement = @session.prepare(cql)
       @generator = Cassandra::Uuid::Generator.new
   end # def register
@@ -32,7 +49,7 @@ class LogStash::Outputs::Cassandra < LogStash::Outputs::Base
       generic = {'b_' => {}, 'd_' => {}, 'i_' => {}, 'f_' => {}, 's_' => {}}
       args = event.to_hash
       args["id"] = @generator.uuid
-      args["version"] = args.delete("@version").to_i
+      args["version"] = args.delete("@version")
       args["timestamp"] = Time.iso8601(args.delete("@timestamp").iso8601)
       args.each do |key, value|
           if not @columns.include?(key)
